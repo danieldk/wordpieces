@@ -1,0 +1,15 @@
+[package]
+name = "wordpiece"
+version = "0.1.0"
+authors = ["Daniël de Kok <me@danieldk.eu>", "Tobias Pütz <tobias.puetz@uni-tuebingen.de"]
+edition = "2018"
+# Use after SPDX list is updated
+# license = "BlueOak-1.0.0"
+license-file = "LICENSE.md"
+
+exclude = [
+  ".gitignore",
+  ".github",
+]
+
+[dependencies]
