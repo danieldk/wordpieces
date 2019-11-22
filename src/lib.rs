@@ -1,10 +1,20 @@
-use std::borrow::Cow;
 use std::collections::HashSet;
 
 /// A set of word pieces.
-pub struct WordPieces(pub HashSet<String>);
+pub struct WordPieces {
+    prefixes: HashSet<String>,
+    suffixes: HashSet<String>,
+}
 
 impl WordPieces {
+    /// Construct new word pieces instance.
+    ///
+    /// The arguments are the prefix and suffix set. The prefix set
+    /// should have the suffix marker `##` removed.
+    pub fn new(prefixes: HashSet<String>, suffixes: HashSet<String>) -> Self {
+        WordPieces { prefixes, suffixes }
+    }
+
     /// Split a string into word pieces.
     pub fn split(&self, word: &str) -> Result<Vec<String>, Vec<String>> {
         // Get character offsets into `word`. Add the length of the
@@ -18,18 +28,20 @@ impl WordPieces {
             let mut end = char_indices.len() - 1;
 
             while begin < end {
-                let candidate_piece = if begin != 0 {
-                    Cow::Owned(format!(
-                        "##{}",
-                        &word[char_indices[begin]..char_indices[end]]
-                    ))
-                } else {
-                    Cow::Borrowed(&word[..char_indices[end]])
-                };
+                let candidate_piece = &word[char_indices[begin]..char_indices[end]];
 
-                if self.0.contains(candidate_piece.as_ref()) {
-                    pieces.push(candidate_piece.into_owned());
-                    break;
+                if begin == 0 {
+                    // Prefix
+                    if self.prefixes.contains(candidate_piece) {
+                        pieces.push(candidate_piece.to_owned());
+                        break;
+                    }
+                } else {
+                    // Suffix
+                    if self.suffixes.contains(candidate_piece) {
+                        pieces.push(format!("##{}", candidate_piece.to_owned()));
+                        break;
+                    }
                 }
 
                 end -= 1;
@@ -55,15 +67,14 @@ mod tests {
     use super::WordPieces;
 
     fn example_word_pieces() -> WordPieces {
-        WordPieces(HashSet::from_iter(
-            (&[
-                "voor".to_string(),
-                "coördina".to_string(),
-                "##tie".to_string(),
-            ])
-                .iter()
-                .map(Clone::clone),
-        ))
+        WordPieces {
+            prefixes: HashSet::from_iter(
+                (&["voor".to_string(), "coördina".to_string()])
+                    .iter()
+                    .map(Clone::clone),
+            ),
+            suffixes: HashSet::from_iter((&["tie".to_string()]).iter().map(Clone::clone)),
+        }
     }
 
     #[test]
