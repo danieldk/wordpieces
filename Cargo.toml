@@ -13,3 +13,8 @@ exclude = [
 ]
 
 [dependencies]
+failure = "0.1"
+fst = "0.3"
+
+[dev-dependencies]
+quickcheck = "0.9"
