@@ -16,7 +16,7 @@ impl WordPieces {
     /// Construct new word pieces instance.
     ///
     /// The arguments are the prefix and suffix set. The suffix set
-    /// should not have suffix markers (`##`).
+    /// should not have suffix markers (such as `##`).
     pub fn new(prefixes: Set, suffixes: Set) -> Self {
         WordPieces { prefixes, suffixes }
     }
@@ -39,7 +39,7 @@ impl WordPieces {
     }
 
     /// Split a string into word pieces.
-    pub fn split(&self, mut word: &str) -> Result<Vec<String>, Vec<String>> {
+    pub fn split<'a>(&self, mut word: &'a str) -> Result<Vec<&'a str>, Vec<&'a str>> {
         let mut pieces = Vec::new();
 
         // Find the word's prefix
@@ -47,7 +47,7 @@ impl WordPieces {
         if prefix_len == 0 {
             return Err(pieces);
         }
-        pieces.push(word[..prefix_len].to_string());
+        pieces.push(&word[..prefix_len]);
         word = &word[prefix_len..];
 
         // Find the word's suffixes.
@@ -57,7 +57,7 @@ impl WordPieces {
                 return Err(pieces);
             }
 
-            pieces.push(format!("##{}", word[..prefix_len].to_string()));
+            pieces.push(&word[..prefix_len]);
             word = &word[prefix_len..];
         }
 
@@ -128,20 +128,16 @@ mod tests {
     fn test_word_pieces() {
         let word_pieces = example_word_pieces();
 
-        assert_eq!(word_pieces.split("voor"), Ok(vec!["voor".to_string()]));
-        assert_eq!(word_pieces.split("unknown"), Err(Vec::<String>::new()));
-        assert_eq!(word_pieces.split("voorman"), Err(vec!["voor".to_string()]));
+        assert_eq!(word_pieces.split("voor"), Ok(vec!["voor"]));
+        assert_eq!(word_pieces.split("unknown"), Err(vec![]));
+        assert_eq!(word_pieces.split("voorman"), Err(vec!["voor"]));
         assert_eq!(
             word_pieces.split("coördinatie"),
-            Ok(vec!["coördina".to_string(), "##tie".to_string()])
+            Ok(vec!["coördina", "tie"])
         );
         assert_eq!(
             word_pieces.split("voorkomen"),
-            Ok(vec![
-                "voor".to_string(),
-                "##kom".to_string(),
-                "##en".to_string()
-            ])
+            Ok(vec!["voor", "kom", "en"])
         );
     }
 
@@ -152,10 +148,7 @@ mod tests {
             suffixes: affixes_to_set(&["o", "bar", "b", "a", "r"]),
         };
 
-        assert_eq!(
-            word_pieces.split("foobar"),
-            Ok(vec!["foo".to_string(), "##bar".to_string()])
-        );
+        assert_eq!(word_pieces.split("foobar"), Ok(vec!["foo", "bar"]));
     }
 
     #[test]
@@ -163,12 +156,12 @@ mod tests {
         let f = File::open("testdata/test.pieces").unwrap();
         let word_pieces = WordPieces::try_from(BufReader::new(f).lines()).unwrap();
 
-        assert_eq!(word_pieces.split("voor"), Ok(vec!["voor".to_string()]));
-        assert_eq!(word_pieces.split("unknown"), Err(Vec::<String>::new()));
-        assert_eq!(word_pieces.split("voorman"), Err(vec!["voor".to_string()]));
+        assert_eq!(word_pieces.split("voor"), Ok(vec!["voor"]));
+        assert_eq!(word_pieces.split("unknown"), Err(vec![]));
+        assert_eq!(word_pieces.split("voorman"), Err(vec!["voor"]));
         assert_eq!(
             word_pieces.split("coördinatie"),
-            Ok(vec!["coördina".to_string(), "##tie".to_string()])
+            Ok(vec!["coördina", "tie"])
         );
     }
 }
