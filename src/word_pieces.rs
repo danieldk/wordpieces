@@ -39,29 +39,14 @@ impl WordPieces {
     }
 
     /// Split a string into word pieces.
-    pub fn split<'a>(&self, mut word: &'a str) -> Result<Vec<&'a str>, Vec<&'a str>> {
-        let mut pieces = Vec::new();
-
-        // Find the word's prefix
-        let prefix_len = Self::longest_prefix_len(&self.prefixes, word);
-        if prefix_len == 0 {
-            return Err(pieces);
+    ///
+    /// Returns an iterator over the word pieces.
+    pub fn split<'a, 'b>(&'a self, word: &'b str) -> WordPieceIter<'a, 'b> {
+        WordPieceIter {
+            word_pieces: self,
+            word,
+            initial: true,
         }
-        pieces.push(&word[..prefix_len]);
-        word = &word[prefix_len..];
-
-        // Find the word's suffixes.
-        while !word.is_empty() {
-            let prefix_len = Self::longest_prefix_len(&self.suffixes, word);
-            if prefix_len == 0 {
-                return Err(pieces);
-            }
-
-            pieces.push(&word[..prefix_len]);
-            word = &word[prefix_len..];
-        }
-
-        Ok(pieces)
     }
 }
 
@@ -98,6 +83,79 @@ where
     }
 }
 
+/// A single word piece.
+#[derive(Debug, Eq, PartialEq)]
+pub enum WordPiece<'a> {
+    /// The next found word piece.
+    Found(&'a str),
+
+    /// No piece was found for the (remaining part of) the word.
+    Missing,
+}
+
+impl<'a> WordPiece<'a> {
+    /// Unwrap a piece if present.
+    pub fn piece(&self) -> Option<&'a str> {
+        match self {
+            WordPiece::Found(piece) => Some(piece),
+            WordPiece::Missing => None,
+        }
+    }
+}
+
+impl<'a> From<&WordPiece<'a>> for Option<&'a str> {
+    fn from(word_piece: &WordPiece<'a>) -> Self {
+        word_piece.piece()
+    }
+}
+
+/// Iterator over word pieces.
+pub struct WordPieceIter<'a, 'b> {
+    word_pieces: &'a WordPieces,
+
+    /// The remaining word.
+    word: &'b str,
+
+    /// Is this the initial word piece?
+    initial: bool,
+}
+
+impl<'a, 'b> Iterator for WordPieceIter<'a, 'b> {
+    type Item = WordPiece<'b>;
+
+    fn next(&mut self) -> Option<Self::Item> {
+        if self.word.is_empty() {
+            assert!(
+                !self.initial,
+                "Cannot break an empty string into word pieces"
+            );
+            return None;
+        }
+
+        // Pick the word-initial or continuation set.
+        let set = if self.initial {
+            self.initial = false;
+            &self.word_pieces.prefixes
+        } else {
+            &self.word_pieces.suffixes
+        };
+
+        // Find the word's prefix in the set.
+        let prefix_len = WordPieces::longest_prefix_len(set, self.word);
+        if prefix_len == 0 {
+            // If there is no matching set, empty the word.
+            self.word = &self.word[self.word.len()..];
+            return Some(WordPiece::Missing);
+        }
+
+        let piece = &self.word[..prefix_len];
+
+        self.word = &self.word[prefix_len..];
+
+        Some(WordPiece::Found(piece))
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use std::collections::BTreeSet;
@@ -108,7 +166,7 @@ mod tests {
 
     use fst::{Set, SetBuilder};
 
-    use super::WordPieces;
+    use super::{WordPiece, WordPieces};
 
     fn affixes_to_set(affixes: &[&str]) -> Set {
         let affixes = BTreeSet::from_iter(affixes);
@@ -128,17 +186,37 @@ mod tests {
     fn test_word_pieces() {
         let word_pieces = example_word_pieces();
 
-        assert_eq!(word_pieces.split("voor"), Ok(vec!["voor"]));
-        assert_eq!(word_pieces.split("unknown"), Err(vec![]));
-        assert_eq!(word_pieces.split("voorman"), Err(vec!["voor"]));
         assert_eq!(
-            word_pieces.split("coördinatie"),
-            Ok(vec!["coördina", "tie"])
+            word_pieces.split("voor").collect::<Vec<_>>(),
+            vec![WordPiece::Found("voor")]
         );
         assert_eq!(
-            word_pieces.split("voorkomen"),
-            Ok(vec!["voor", "kom", "en"])
+            word_pieces.split("unknown").collect::<Vec<_>>(),
+            vec![WordPiece::Missing]
         );
+        assert_eq!(
+            word_pieces.split("voorman").collect::<Vec<_>>(),
+            vec![WordPiece::Found("voor"), WordPiece::Missing]
+        );
+        assert_eq!(
+            word_pieces.split("coördinatie").collect::<Vec<_>>(),
+            vec![WordPiece::Found("coördina"), WordPiece::Found("tie")]
+        );
+        assert_eq!(
+            word_pieces.split("voorkomen").collect::<Vec<_>>(),
+            vec![
+                WordPiece::Found("voor"),
+                WordPiece::Found("kom"),
+                WordPiece::Found("en")
+            ]
+        );
+    }
+
+    #[test]
+    #[should_panic]
+    fn splitting_empty_should_panic() {
+        let word_pieces = example_word_pieces();
+        assert_eq!(word_pieces.split("").collect::<Vec<_>>(), vec![]);
     }
 
     #[test]
@@ -148,7 +226,10 @@ mod tests {
             suffixes: affixes_to_set(&["o", "bar", "b", "a", "r"]),
         };
 
-        assert_eq!(word_pieces.split("foobar"), Ok(vec!["foo", "bar"]));
+        assert_eq!(
+            word_pieces.split("foobar").collect::<Vec<_>>(),
+            vec![WordPiece::Found("foo"), WordPiece::Found("bar")]
+        );
     }
 
     #[test]
@@ -156,12 +237,21 @@ mod tests {
         let f = File::open("testdata/test.pieces").unwrap();
         let word_pieces = WordPieces::try_from(BufReader::new(f).lines()).unwrap();
 
-        assert_eq!(word_pieces.split("voor"), Ok(vec!["voor"]));
-        assert_eq!(word_pieces.split("unknown"), Err(vec![]));
-        assert_eq!(word_pieces.split("voorman"), Err(vec!["voor"]));
         assert_eq!(
-            word_pieces.split("coördinatie"),
-            Ok(vec!["coördina", "tie"])
+            word_pieces.split("voor").collect::<Vec<_>>(),
+            vec![WordPiece::Found("voor")]
+        );
+        assert_eq!(
+            word_pieces.split("unknown").collect::<Vec<_>>(),
+            vec![WordPiece::Missing]
+        );
+        assert_eq!(
+            word_pieces.split("voorman").collect::<Vec<_>>(),
+            vec![WordPiece::Found("voor"), WordPiece::Missing]
+        );
+        assert_eq!(
+            word_pieces.split("coördinatie").collect::<Vec<_>>(),
+            vec![WordPiece::Found("coördina"), WordPiece::Found("tie")]
         );
     }
 }
