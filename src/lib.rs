@@ -5,4 +5,4 @@ mod error;
 pub use error::WordPiecesError;
 
 mod word_pieces;
-pub use word_pieces::WordPieces;
+pub use word_pieces::{WordPiece, WordPieces};
