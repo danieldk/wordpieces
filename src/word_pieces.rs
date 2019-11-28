@@ -8,21 +8,25 @@ use crate::{PrefixAutomaton, WordPiecesError};
 
 /// A set of word pieces.
 pub struct WordPieces {
-    prefixes: Set,
-    suffixes: Set,
+    word_initial: Set,
+    continuation: Set,
 }
 
 impl WordPieces {
     /// Construct new word pieces instance.
     ///
-    /// The arguments are the prefix and suffix set. The suffix set
-    /// should not have suffix markers (such as `##`).
-    pub fn new(prefixes: Set, suffixes: Set) -> Self {
-        WordPieces { prefixes, suffixes }
+    /// The arguments are set of word-initial pieces and the set o
+    /// continuation pieces. The continuation set pieces must not
+    /// have continuation markers (such as `##`).
+    pub fn new(word_initial: Set, continuation: Set) -> Self {
+        WordPieces {
+            word_initial,
+            continuation,
+        }
     }
 
-    fn longest_prefix_len(affix_set: &Set, word: &str) -> usize {
-        let mut stream = affix_set.search(PrefixAutomaton::from(word)).into_stream();
+    fn longest_prefix_len(piece_set: &Set, word: &str) -> usize {
+        let mut stream = piece_set.search(PrefixAutomaton::from(word)).into_stream();
 
         let mut longest_len = match stream.next() {
             Some(prefix) => prefix.len(),
@@ -57,28 +61,28 @@ where
     type Error = WordPiecesError;
 
     fn try_from(lines: Lines<R>) -> Result<Self, Self::Error> {
-        let mut prefixes = BTreeSet::new();
-        let mut suffixes = BTreeSet::new();
+        let mut word_initial = BTreeSet::new();
+        let mut continuation = BTreeSet::new();
 
         for line in lines {
             let line = line?;
 
             if line.starts_with("##") {
-                suffixes.insert(line[2..].to_string());
+                continuation.insert(line[2..].to_string());
             } else {
-                prefixes.insert(line);
+                word_initial.insert(line);
             }
         }
 
-        let mut prefix_set = SetBuilder::memory();
-        prefix_set.extend_iter(prefixes)?;
+        let mut word_initial_set = SetBuilder::memory();
+        word_initial_set.extend_iter(word_initial)?;
 
-        let mut suffix_set = SetBuilder::memory();
-        suffix_set.extend_iter(suffixes)?;
+        let mut continuation_set = SetBuilder::memory();
+        continuation_set.extend_iter(continuation)?;
 
         Ok(WordPieces {
-            prefixes: Set::from_bytes(prefix_set.into_inner()?)?,
-            suffixes: Set::from_bytes(suffix_set.into_inner()?)?,
+            word_initial: Set::from_bytes(word_initial_set.into_inner()?)?,
+            continuation: Set::from_bytes(continuation_set.into_inner()?)?,
         })
     }
 }
@@ -135,9 +139,9 @@ impl<'a, 'b> Iterator for WordPieceIter<'a, 'b> {
         // Pick the word-initial or continuation set.
         let set = if self.initial {
             self.initial = false;
-            &self.word_pieces.prefixes
+            &self.word_pieces.word_initial
         } else {
-            &self.word_pieces.suffixes
+            &self.word_pieces.continuation
         };
 
         // Find the word's prefix in the set.
@@ -168,17 +172,17 @@ mod tests {
 
     use super::{WordPiece, WordPieces};
 
-    fn affixes_to_set(affixes: &[&str]) -> Set {
-        let affixes = BTreeSet::from_iter(affixes);
+    fn pieces_to_set(pieces: &[&str]) -> Set {
+        let pieces = BTreeSet::from_iter(pieces);
         let mut builder = SetBuilder::memory();
-        builder.extend_iter(affixes).unwrap();
+        builder.extend_iter(pieces).unwrap();
         Set::from_bytes(builder.into_inner().unwrap()).unwrap()
     }
 
     fn example_word_pieces() -> WordPieces {
         WordPieces {
-            prefixes: affixes_to_set(&["voor", "coördina"]),
-            suffixes: affixes_to_set(&["tie", "kom", "en"]),
+            word_initial: pieces_to_set(&["voor", "coördina"]),
+            continuation: pieces_to_set(&["tie", "kom", "en"]),
         }
     }
 
@@ -222,8 +226,8 @@ mod tests {
     #[test]
     fn longest_prefix_used() {
         let word_pieces = WordPieces {
-            prefixes: affixes_to_set(&["foo", "fo"]),
-            suffixes: affixes_to_set(&["o", "bar", "b", "a", "r"]),
+            word_initial: pieces_to_set(&["foo", "fo"]),
+            continuation: pieces_to_set(&["o", "bar", "b", "a", "r"]),
         };
 
         assert_eq!(
