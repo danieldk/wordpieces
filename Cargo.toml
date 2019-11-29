@@ -1,5 +1,5 @@
 [package]
-name = "wordpiece"
+name = "wordpieces"
 version = "0.1.0"
 authors = ["Daniël de Kok <me@danieldk.eu>", "Tobias Pütz <tobias.puetz@uni-tuebingen.de"]
 edition = "2018"
