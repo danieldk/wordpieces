@@ -2,6 +2,9 @@
 name = "wordpieces"
 version = "0.1.0"
 authors = ["Daniël de Kok <me@danieldk.eu>", "Tobias Pütz <tobias.puetz@uni-tuebingen.de"]
+description = "Split tokens into word pieces"
+keywords = ["wordpiece", "word", "piece", "tokenization"]
+homepage = "https://github.com/stickeritis/wordpieces"
 edition = "2018"
 # Use after SPDX list is updated
 # license = "BlueOak-1.0.0"
