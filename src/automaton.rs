@@ -24,6 +24,13 @@ impl<'a> Automaton for PrefixAutomaton<'a> {
         PrefixAutomatonState::State(0)
     }
 
+    fn can_match(&self, state: &Self::State) -> bool {
+        match *state {
+            PrefixAutomatonState::Sink => false,
+            PrefixAutomatonState::State(_) => true,
+        }
+    }
+
     fn is_match(&self, state: &Self::State) -> bool {
         match *state {
             PrefixAutomatonState::Sink => false,
