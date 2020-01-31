@@ -1,18 +1,18 @@
 [package]
 name = "wordpieces"
-version = "0.1.1"
+version = "0.2.0"
 authors = ["Daniël de Kok <me@danieldk.eu>", "Tobias Pütz <tobias.puetz@uni-tuebingen.de"]
 description = "Split tokens into word pieces"
 keywords = ["wordpiece", "word", "piece", "tokenization"]
-homepage = "https://github.com/stickeritis/wordpieces"
+homepage = "https://github.com/danieldk/wordpieces"
 edition = "2018"
-# Use after SPDX list is updated
-# license = "BlueOak-1.0.0"
-license-file = "LICENSE.md"
+license = "BlueOak-1.0.0"
 
 exclude = [
   ".gitignore",
   ".github",
+  "shell.nix",
+  "nix/*"
 ]
 
 [dependencies]
