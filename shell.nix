@@ -1,7 +1,10 @@
 with import <nixpkgs> {};
 
-mkShell {
+let
+  sources = import ./nix/sources.nix;
+  mozilla = callPackage "${sources.mozilla}/package-set.nix" {};
+in mkShell {
   nativeBuildInputs = [
-    latest.rustChannels.stable.rust
+    mozilla.latest.rustChannels.stable.rust
   ];
 }
