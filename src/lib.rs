@@ -29,9 +29,6 @@
 //! assert_eq!(pieces, vec![Some("voor"), None]);
 //! ~~~
 
-mod automaton;
-use automaton::PrefixAutomaton;
-
 mod error;
 pub use error::WordPiecesError;
 

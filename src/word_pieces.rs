@@ -2,9 +2,10 @@ use std::collections::BTreeMap;
 use std::convert::TryFrom;
 use std::io::{BufRead, Lines};
 
-use fst::{self, IntoStreamer, Map, MapBuilder, Streamer};
+use fst::raw::Output;
+use fst::{self, Map, MapBuilder};
 
-use crate::{PrefixAutomaton, WordPiecesError};
+use crate::WordPiecesError;
 
 /// A set of word pieces.
 pub struct WordPieces {
@@ -26,21 +27,33 @@ impl WordPieces {
     }
 
     fn longest_prefix_len(piece_map: &Map, word: &str) -> (usize, u64) {
-        let mut stream = piece_map.search(PrefixAutomaton::from(word)).into_stream();
+        let fst = piece_map.as_fst();
 
-        let (mut longest_len, mut longest_idx) = match stream.next() {
-            Some((prefix, idx)) => (prefix.len(), idx),
-            None => return (0, 0),
-        };
+        let mut node = fst.root();
+        let mut out = Output::zero();
+        let mut longest_prefix = 0;
+        let mut longest_prefix_out = Output::zero();
 
-        while let Some((prefix, idx)) = stream.next() {
-            if prefix.len() > longest_len {
-                longest_len = prefix.len();
-                longest_idx = idx;
+        for (idx, &byte) in word.as_bytes().iter().enumerate() {
+            // Attempt to move to the next state.
+            match node.find_input(byte) {
+                Some(trans_idx) => {
+                    let trans = node.transition(trans_idx);
+
+                    out = out.cat(trans.out);
+                    node = fst.node(trans.addr);
+                }
+                None => return (longest_prefix, longest_prefix_out.value()),
+            };
+
+            // We have found the next prefix, save it.
+            if node.is_final() {
+                longest_prefix = idx + 1;
+                longest_prefix_out = node.final_output().cat(out);
             }
         }
 
-        (longest_len, longest_idx)
+        (longest_prefix, longest_prefix_out.value())
     }
 
     /// Look up the index of an initial word piece.
@@ -205,7 +218,7 @@ mod tests {
     fn example_word_pieces() -> WordPieces {
         WordPieces {
             word_initial: pieces_to_map(&[("voor", 0), ("coördina", 2)]),
-            continuation: pieces_to_map(&[("tie", 1), ("kom", 3), ("en", 4)]),
+            continuation: pieces_to_map(&[("tie", 1), ("kom", 3), ("en", 4), ("komt", 1)]),
         }
     }
 
