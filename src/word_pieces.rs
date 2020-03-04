@@ -1,15 +1,27 @@
-use std::collections::BTreeMap;
+use std::cmp;
 use std::convert::TryFrom;
 use std::io::{BufRead, Lines};
 
-use fst::{self, IntoStreamer, Map, MapBuilder, Streamer};
+use ordslice::Ext;
 
-use crate::{PrefixAutomaton, WordPiecesError};
+use crate::WordPiecesError;
+
+pub struct SortedStrings(Vec<(String, u64)>);
+
+impl SortedStrings {
+    pub fn new(strings: impl Into<Vec<(String, u64)>>) -> Self {
+        let mut strings = strings.into();
+
+        strings.sort_unstable_by(|a, b| a.0.cmp(&b.0));
+
+        SortedStrings(strings)
+    }
+}
 
 /// A set of word pieces.
 pub struct WordPieces {
-    word_initial: Map,
-    continuation: Map,
+    word_initial: SortedStrings,
+    continuation: SortedStrings,
 }
 
 impl WordPieces {
@@ -18,39 +30,67 @@ impl WordPieces {
     /// The arguments are set of word-initial pieces and the set o
     /// continuation pieces. The continuation set pieces must not
     /// have continuation markers (such as `##`).
-    pub fn new(word_initial: Map, continuation: Map) -> Self {
+    pub fn new(word_initial: SortedStrings, continuation: SortedStrings) -> Self {
         WordPieces {
             word_initial,
             continuation,
         }
     }
 
-    fn longest_prefix_len(piece_map: &Map, word: &str) -> (usize, u64) {
-        let mut stream = piece_map.search(PrefixAutomaton::from(word)).into_stream();
+    fn longest_prefix_len(mut sorted_pieces: &[(String, u64)], word: &str) -> (usize, u64) {
+        // We find the longest prefix length by traversing over
+        // increasingly long prefixes of `word`. For each prefix, we
+        // find the upper and lower bounds of that prefix in
+        // `sorted_pieces`. For the next prefix we then only have to
+        // search this subarray.
+        //
+        // In total, we at most N log K steps, where N is the length
+        // of `word` and `K` the length of `sorted_pieces`. Of course,
+        // in practice K will decrease drasticly for each n in 1..N.
 
-        let (mut longest_len, mut longest_idx) = match stream.next() {
-            Some((prefix, idx)) => (prefix.len(), idx),
-            None => return (0, 0),
-        };
+        let mut idx = 0;
+        let mut previous_prefix_len = 0;
 
-        while let Some((prefix, idx)) = stream.next() {
-            if prefix.len() > longest_len {
-                longest_len = prefix.len();
-                longest_idx = idx;
+        for (index, ch) in word.char_indices() {
+            let prefix_len = index + ch.len_utf8();
+            let affix = &word[previous_prefix_len..prefix_len];
+
+            let range = sorted_pieces.equal_range_by(|probe| {
+                let probe_len = probe.0.len();
+                probe.0.as_bytes()[previous_prefix_len..cmp::min(probe_len, prefix_len)]
+                    .cmp(affix.as_bytes())
+            });
+
+            // No match found.
+            if range.start == range.end {
+                return (index, idx);
             }
+
+            idx = sorted_pieces[range.start].1;
+            sorted_pieces = &sorted_pieces[range.start..range.end];
+
+            previous_prefix_len = prefix_len;
         }
 
-        (longest_len, longest_idx)
+        (word.len(), idx)
     }
 
     /// Look up the index of an initial word piece.
     pub fn get_continuation(&self, piece: &str) -> Option<u64> {
-        self.continuation.get(piece)
+        self.continuation
+            .0
+            .binary_search_by(|probe| probe.0.as_str().cmp(piece))
+            .ok()
+            .map(|idx| self.continuation.0[idx].1)
     }
 
     /// Look up the index of an continuation word piece.
     pub fn get_initial(&self, piece: &str) -> Option<u64> {
-        self.word_initial.get(piece)
+        self.word_initial
+            .0
+            .binary_search_by(|probe| probe.0.as_str().cmp(piece))
+            .ok()
+            .map(|idx| self.word_initial.0[idx].1)
     }
 
     /// Split a string into word pieces.
@@ -72,28 +112,22 @@ where
     type Error = WordPiecesError;
 
     fn try_from(lines: Lines<R>) -> Result<Self, Self::Error> {
-        let mut word_initial = BTreeMap::new();
-        let mut continuation = BTreeMap::new();
+        let mut word_initial = Vec::new();
+        let mut continuation = Vec::new();
 
         for (idx, line) in lines.enumerate() {
             let line = line?;
 
             if line.starts_with("##") {
-                continuation.insert(line[2..].to_string(), idx as u64);
+                continuation.push((line[2..].to_string(), idx as u64));
             } else {
-                word_initial.insert(line, idx as u64);
+                word_initial.push((line, idx as u64));
             }
         }
 
-        let mut word_initial_set = MapBuilder::memory();
-        word_initial_set.extend_iter(word_initial)?;
-
-        let mut continuation_set = MapBuilder::memory();
-        continuation_set.extend_iter(continuation)?;
-
         Ok(WordPieces {
-            word_initial: Map::from_bytes(word_initial_set.into_inner()?)?,
-            continuation: Map::from_bytes(continuation_set.into_inner()?)?,
+            word_initial: SortedStrings::new(word_initial),
+            continuation: SortedStrings::new(continuation),
         })
     }
 }
@@ -164,7 +198,7 @@ impl<'a, 'b> Iterator for WordPieceIter<'a, 'b> {
         };
 
         // Find the word's prefix in the set.
-        let (prefix_len, prefix_idx) = WordPieces::longest_prefix_len(set, self.word);
+        let (prefix_len, prefix_idx) = WordPieces::longest_prefix_len(&set.0, self.word);
         if prefix_len == 0 {
             // If there is no matching set, empty the word.
             self.word = &self.word[self.word.len()..];
@@ -184,28 +218,23 @@ impl<'a, 'b> Iterator for WordPieceIter<'a, 'b> {
 
 #[cfg(test)]
 mod tests {
-    use std::collections::BTreeMap;
     use std::convert::TryFrom;
     use std::fs::File;
     use std::io::{BufRead, BufReader};
-    use std::iter::FromIterator;
 
-    use fst::{Map, MapBuilder};
-
-    use super::{WordPiece, WordPieces};
-
-    fn pieces_to_map(pieces: &[(&str, u64)]) -> Map {
-        let pieces =
-            BTreeMap::from_iter(pieces.iter().map(|(piece, idx)| (piece.to_string(), *idx)));
-        let mut builder = MapBuilder::memory();
-        builder.extend_iter(pieces).unwrap();
-        Map::from_bytes(builder.into_inner().unwrap()).unwrap()
-    }
+    use super::{SortedStrings, WordPiece, WordPieces};
 
     fn example_word_pieces() -> WordPieces {
         WordPieces {
-            word_initial: pieces_to_map(&[("voor", 0), ("coördina", 2)]),
-            continuation: pieces_to_map(&[("tie", 1), ("kom", 3), ("en", 4)]),
+            word_initial: SortedStrings::new(vec![
+                ("voor".to_string(), 0),
+                ("coördina".to_string(), 2),
+            ]),
+            continuation: SortedStrings::new(vec![
+                ("tie".to_string(), 1),
+                ("kom".to_string(), 3),
+                ("en".to_string(), 4),
+            ]),
         }
     }
 
@@ -276,8 +305,14 @@ mod tests {
     #[test]
     fn longest_prefix_used() {
         let word_pieces = WordPieces {
-            word_initial: pieces_to_map(&[("foo", 0), ("fo", 2)]),
-            continuation: pieces_to_map(&[("o", 1), ("bar", 3), ("b", 4), ("a", 5), ("r", 6)]),
+            word_initial: SortedStrings::new(vec![("foo".to_string(), 0), ("fo".to_string(), 2)]),
+            continuation: SortedStrings::new(vec![
+                ("o".to_string(), 1),
+                ("bar".to_string(), 3),
+                ("b".to_string(), 4),
+                ("a".to_string(), 5),
+                ("r".to_string(), 6),
+            ]),
         };
 
         assert_eq!(
