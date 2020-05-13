@@ -9,8 +9,8 @@ use crate::WordPiecesError;
 
 /// A set of word pieces.
 pub struct WordPieces {
-    word_initial: Map,
-    continuation: Map,
+    word_initial: Map<Vec<u8>>,
+    continuation: Map<Vec<u8>>,
 }
 
 impl WordPieces {
@@ -19,14 +19,17 @@ impl WordPieces {
     /// The arguments are set of word-initial pieces and the set o
     /// continuation pieces. The continuation set pieces must not
     /// have continuation markers (such as `##`).
-    pub fn new(word_initial: Map, continuation: Map) -> Self {
+    pub fn new(word_initial: Map<Vec<u8>>, continuation: Map<Vec<u8>>) -> Self {
         WordPieces {
             word_initial,
             continuation,
         }
     }
 
-    fn longest_prefix_len(piece_map: &Map, word: &str) -> (usize, u64) {
+    fn longest_prefix_len<D>(piece_map: &Map<D>, word: &str) -> (usize, u64)
+    where
+        D: AsRef<[u8]>,
+    {
         let fst = piece_map.as_fst();
 
         let mut node = fst.root();
@@ -105,8 +108,8 @@ where
         continuation_set.extend_iter(continuation)?;
 
         Ok(WordPieces {
-            word_initial: Map::from_bytes(word_initial_set.into_inner()?)?,
-            continuation: Map::from_bytes(continuation_set.into_inner()?)?,
+            word_initial: Map::new(word_initial_set.into_inner()?)?,
+            continuation: Map::new(continuation_set.into_inner()?)?,
         })
     }
 }
@@ -207,12 +210,12 @@ mod tests {
 
     use super::{WordPiece, WordPieces};
 
-    fn pieces_to_map(pieces: &[(&str, u64)]) -> Map {
+    fn pieces_to_map(pieces: &[(&str, u64)]) -> Map<Vec<u8>> {
         let pieces =
             BTreeMap::from_iter(pieces.iter().map(|(piece, idx)| (piece.to_string(), *idx)));
         let mut builder = MapBuilder::memory();
         builder.extend_iter(pieces).unwrap();
-        Map::from_bytes(builder.into_inner().unwrap()).unwrap()
+        Map::new(builder.into_inner().unwrap()).unwrap()
     }
 
     fn example_word_pieces() -> WordPieces {

@@ -16,7 +16,7 @@ exclude = [
 ]
 
 [dependencies]
-fst = "0.3"
+fst = "0.4"
 thiserror = "1"
 
 [dev-dependencies]
