@@ -94,11 +94,10 @@ where
         for (idx, line) in lines.enumerate() {
             let line = line?;
 
-            if line.starts_with("##") {
-                continuation.insert(line[2..].to_string(), idx as u64);
-            } else {
-                word_initial.insert(line, idx as u64);
-            }
+            match line.strip_prefix("##") {
+                Some(stripped) => continuation.insert(stripped.to_string(), idx as u64),
+                None => word_initial.insert(line, idx as u64),
+            };
         }
 
         let mut word_initial_set = MapBuilder::memory();
