@@ -20,4 +20,4 @@ fst = "0.4"
 thiserror = "1"
 
 [dev-dependencies]
-quickcheck = "0.9"
+quickcheck = "1.0"
