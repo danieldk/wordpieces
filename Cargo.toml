@@ -6,7 +6,7 @@ description = "Split tokens into word pieces"
 keywords = ["wordpiece", "word", "piece", "tokenization"]
 homepage = "https://github.com/danieldk/wordpieces"
 edition = "2018"
-license = "BlueOak-1.0.0"
+license = "MIT OR Apache-2.0"
 
 exclude = [
   ".gitignore",
