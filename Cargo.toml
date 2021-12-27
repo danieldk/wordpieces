@@ -11,8 +11,6 @@ license = "MIT OR Apache-2.0"
 exclude = [
   ".gitignore",
   ".github",
-  "shell.nix",
-  "nix/*"
 ]
 
 [dependencies]
