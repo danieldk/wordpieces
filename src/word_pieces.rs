@@ -2,7 +2,7 @@ use std::collections::BTreeMap;
 use std::io::BufRead;
 
 use fst::raw::Output;
-use fst::{self, Map, MapBuilder};
+use fst::{self, Map, MapBuilder, Streamer};
 
 use crate::WordPiecesError;
 
@@ -131,6 +131,28 @@ impl WordPieces {
     }
 }
 
+impl From<WordPieces> for Vec<String> {
+    fn from(word_pieces: WordPieces) -> Self {
+        let mut pieces =
+            vec![String::new(); word_pieces.word_initial.len() + word_pieces.continuation.len()];
+
+        let mut stream = word_pieces.word_initial.stream();
+        while let Some((piece, idx)) = stream.next() {
+            pieces[idx as usize] =
+                String::from_utf8(piece.to_owned()).expect("Pieces should all be valid UTF-8")
+        }
+
+        stream = word_pieces.continuation.stream();
+        while let Some((piece, idx)) = stream.next() {
+            let piece =
+                String::from_utf8(piece.to_owned()).expect("Pieces should all be valid UTF-8");
+            pieces[idx as usize] = format!("##{}", piece);
+        }
+
+        pieces
+    }
+}
+
 /// A single word piece.
 #[derive(Debug, Eq, PartialEq)]
 pub enum WordPiece<'a> {
@@ -217,12 +239,14 @@ impl<'a, 'b> Iterator for WordPieceIter<'a, 'b> {
 
 #[cfg(test)]
 mod tests {
-    use std::collections::BTreeMap;
     use std::fs::File;
     use std::io::BufReader;
     use std::iter::FromIterator;
+    use std::{collections::BTreeMap, io::BufRead};
 
     use fst::{Map, MapBuilder};
+
+    use crate::WordPiecesBuilder;
 
     use super::{WordPiece, WordPieces};
 
@@ -325,6 +349,21 @@ mod tests {
                 }
             ]
         );
+    }
+
+    #[test]
+    fn test_original_pieces_are_returned() {
+        let f = File::open("testdata/test.pieces").unwrap();
+        let pieces = BufReader::new(f)
+            .lines()
+            .collect::<Result<Vec<_>, _>>()
+            .unwrap();
+        let mut builder = WordPiecesBuilder::default();
+        for (idx, piece) in pieces.iter().enumerate() {
+            builder.insert(piece, idx as u64);
+        }
+        let wordpieces = builder.build().unwrap();
+        assert_eq!(Vec::from(wordpieces), pieces);
     }
 
     #[test]
