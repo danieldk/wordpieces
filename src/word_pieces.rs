@@ -131,8 +131,8 @@ impl WordPieces {
     }
 }
 
-impl From<WordPieces> for Vec<String> {
-    fn from(word_pieces: WordPieces) -> Self {
+impl From<&WordPieces> for Vec<String> {
+    fn from(word_pieces: &WordPieces) -> Self {
         let mut pieces =
             vec![String::new(); word_pieces.word_initial.len() + word_pieces.continuation.len()];
 
@@ -363,7 +363,7 @@ mod tests {
             builder.insert(piece, idx as u64);
         }
         let wordpieces = builder.build().unwrap();
-        assert_eq!(Vec::from(wordpieces), pieces);
+        assert_eq!(Vec::from(&wordpieces), pieces);
     }
 
     #[test]
