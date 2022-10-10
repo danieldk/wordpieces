@@ -1,6 +1,6 @@
 [package]
 name = "wordpieces"
-version = "0.6.0"
+version = "0.6.1"
 authors = ["Daniël de Kok <me@danieldk.eu>", "Tobias Pütz <tobias.puetz@uni-tuebingen.de"]
 description = "Split tokens into word pieces"
 keywords = ["wordpiece", "word", "piece", "tokenization"]
