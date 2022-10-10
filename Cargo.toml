@@ -1,6 +1,6 @@
 [package]
 name = "wordpieces"
-version = "0.5.0"
+version = "0.6.0"
 authors = ["Daniël de Kok <me@danieldk.eu>", "Tobias Pütz <tobias.puetz@uni-tuebingen.de"]
 description = "Split tokens into word pieces"
 keywords = ["wordpiece", "word", "piece", "tokenization"]
@@ -16,6 +16,3 @@ exclude = [
 [dependencies]
 fst = "0.4"
 thiserror = "1"
-
-[dev-dependencies]
-quickcheck = "1.0"
