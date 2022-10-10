@@ -16,7 +16,7 @@
 //! use wordpieces::{WordPiece, WordPieces};
 //!
 //! let f = File::open("testdata/test.pieces").unwrap();
-//! let word_pieces = WordPieces::try_from(BufReader::new(f).lines()).unwrap();
+//! let word_pieces = WordPieces::from_buf_read(BufReader::new(f)).unwrap();
 //!
 //! // A word that can be split fully.
 //! let pieces = word_pieces.split("coördinatie")
@@ -33,4 +33,4 @@ mod error;
 pub use error::WordPiecesError;
 
 mod word_pieces;
-pub use word_pieces::{WordPiece, WordPieces};
+pub use word_pieces::{WordPiece, WordPieces, WordPiecesBuilder};
