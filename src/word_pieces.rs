@@ -1,11 +1,50 @@
 use std::collections::BTreeMap;
-use std::convert::TryFrom;
-use std::io::{BufRead, Lines};
+use std::io::BufRead;
 
 use fst::raw::Output;
 use fst::{self, Map, MapBuilder};
 
 use crate::WordPiecesError;
+
+pub struct WordPiecesBuilder {
+    word_initial: BTreeMap<String, u64>,
+    continuation: BTreeMap<String, u64>,
+}
+
+impl Default for WordPiecesBuilder {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
+impl WordPiecesBuilder {
+    pub fn new() -> Self {
+        WordPiecesBuilder {
+            word_initial: BTreeMap::new(),
+            continuation: BTreeMap::new(),
+        }
+    }
+
+    pub fn build(self) -> Result<WordPieces, WordPiecesError> {
+        let mut word_initial_set = MapBuilder::memory();
+        word_initial_set.extend_iter(self.word_initial)?;
+
+        let mut continuation_set = MapBuilder::memory();
+        continuation_set.extend_iter(self.continuation)?;
+
+        Ok(WordPieces {
+            word_initial: Map::new(word_initial_set.into_inner()?)?,
+            continuation: Map::new(continuation_set.into_inner()?)?,
+        })
+    }
+
+    pub fn insert(&mut self, piece: &str, idx: u64) {
+        match piece.strip_prefix("##") {
+            Some(stripped) => self.continuation.insert(stripped.to_string(), idx as u64),
+            None => self.word_initial.insert(piece.to_owned(), idx as u64),
+        };
+    }
+}
 
 /// A set of word pieces.
 pub struct WordPieces {
@@ -24,6 +63,17 @@ impl WordPieces {
             word_initial,
             continuation,
         }
+    }
+
+    pub fn from_buf_read(buf_read: impl BufRead) -> Result<Self, WordPiecesError> {
+        let mut builder = WordPiecesBuilder::new();
+
+        for (idx, piece) in buf_read.lines().enumerate() {
+            let piece = piece?;
+            builder.insert(&piece, idx as u64);
+        }
+
+        builder.build()
     }
 
     fn longest_prefix_len<D>(piece_map: &Map<D>, word: &str) -> (usize, u64)
@@ -78,38 +128,6 @@ impl WordPieces {
             word,
             initial: true,
         }
-    }
-}
-
-impl<R> TryFrom<Lines<R>> for WordPieces
-where
-    R: BufRead,
-{
-    type Error = WordPiecesError;
-
-    fn try_from(lines: Lines<R>) -> Result<Self, Self::Error> {
-        let mut word_initial = BTreeMap::new();
-        let mut continuation = BTreeMap::new();
-
-        for (idx, line) in lines.enumerate() {
-            let line = line?;
-
-            match line.strip_prefix("##") {
-                Some(stripped) => continuation.insert(stripped.to_string(), idx as u64),
-                None => word_initial.insert(line, idx as u64),
-            };
-        }
-
-        let mut word_initial_set = MapBuilder::memory();
-        word_initial_set.extend_iter(word_initial)?;
-
-        let mut continuation_set = MapBuilder::memory();
-        continuation_set.extend_iter(continuation)?;
-
-        Ok(WordPieces {
-            word_initial: Map::new(word_initial_set.into_inner()?)?,
-            continuation: Map::new(continuation_set.into_inner()?)?,
-        })
     }
 }
 
@@ -200,9 +218,8 @@ impl<'a, 'b> Iterator for WordPieceIter<'a, 'b> {
 #[cfg(test)]
 mod tests {
     use std::collections::BTreeMap;
-    use std::convert::TryFrom;
     use std::fs::File;
-    use std::io::{BufRead, BufReader};
+    use std::io::BufReader;
     use std::iter::FromIterator;
 
     use fst::{Map, MapBuilder};
@@ -313,7 +330,7 @@ mod tests {
     #[test]
     fn test_word_pieces_file() {
         let f = File::open("testdata/test.pieces").unwrap();
-        let word_pieces = WordPieces::try_from(BufReader::new(f).lines()).unwrap();
+        let word_pieces = WordPieces::from_buf_read(BufReader::new(f)).unwrap();
 
         assert_eq!(
             word_pieces.split("voor").collect::<Vec<_>>(),
